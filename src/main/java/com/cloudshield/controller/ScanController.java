@@ -1,16 +1,16 @@
 package com.cloudshield.controller;
 
+import com.cloudshield.model.ScanJob;
 import com.cloudshield.model.SecretFinding;
 import com.cloudshield.repository.FindingRepository;
-import com.cloudshield.service.AIPatchService;
-import com.cloudshield.service.GitCloneService;
-import com.cloudshield.service.SecretScannerService;
+import com.cloudshield.service.ScanOrchestratorService;
+import com.cloudshield.service.ScanProgressService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.FileSystemUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.nio.file.Path;
 import java.util.Map;
 import java.util.List;
 
@@ -19,17 +19,16 @@ import java.util.List;
 public class ScanController {
 
     @Autowired
-    private GitCloneService gitCloneService;
+    private ScanOrchestratorService scanOrchestratorService;
 
     @Autowired
-    private SecretScannerService secretScannerService;
-
-    @Autowired
-    private AIPatchService aiPatchService;
+    private ScanProgressService scanProgressService;
 
     @Autowired
     private FindingRepository findingRepository; // DB Repository
 
+    // Kicks off the scan on a background thread and returns immediately with
+    // a jobId, instead of blocking the request for the full scan duration.
     @PostMapping("/start")
     public ResponseEntity<?> startScan(@RequestBody Map<String, String> request) {
         String repoUrl = request.get("repoUrl");
@@ -38,51 +37,42 @@ public class ScanController {
             return ResponseEntity.badRequest().body(Map.of("error", "repoUrl is required"));
         }
 
-        String repoPath = null;
-        try {
-            // 1. Clone the repository
-            repoPath = gitCloneService.cloneRepository(repoUrl).toString();
+        ScanJob job = scanProgressService.createJob();
+        scanOrchestratorService.runScan(job.getId(), repoUrl);
 
-            // 2. Run all four security scanners (CNAPP)
-            List<SecretFinding> findings = new java.util.ArrayList<>(secretScannerService.runGitleaks(repoPath));
-            findings.addAll(secretScannerService.runSemgrep(repoPath));
-            findings.addAll(secretScannerService.runTrivy(repoPath));
-            findings.addAll(secretScannerService.runCheckov(repoPath));
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("jobId", job.getId()));
+    }
 
-            // 3. AI Enrichment Loop
-            for (SecretFinding finding : findings) {
-                // Severity is passed through so low-confidence "test data" findings
-                // get calibrated advice instead of a full incident-response essay.
-                String aiFix = aiPatchService.generateFix(finding.getRuleName(), finding.getMatchSnippet(), finding.getSeverity());
-                finding.setAiSuggestedPatch(aiFix);
-            }
+    // Live progress stream for a running scan (Server-Sent Events).
+    // Emits "progress" events as each stage runs, then a final "complete" or
+    // "error" event. The frontend fetches the full result via GET /scan/{id}
+    // once it receives "complete".
+    @GetMapping("/scan/{jobId}/stream")
+    public SseEmitter streamScan(@PathVariable String jobId) {
+        return scanProgressService.subscribe(jobId);
+    }
 
-            // 4. Save everything to the database!
-            findingRepository.saveAll(findings);
-
-            // 5. Return the results
-            return ResponseEntity.ok(Map.of(
-                    "status", "success",
-                    "message", "Scan completed and AI patches saved to database",
-                    "findingsCount", findings.size(),
-                    "findings", findings
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "status", "error",
-                    "message", "Failed to process scan: " + e.getMessage()
-            ));
-        } finally {
-            // 6. Cleanup temporary files
-            if (repoPath != null) {
-                try {
-                    FileSystemUtils.deleteRecursively(Path.of(repoPath));
-                    System.out.println("Securely deleted temporary folder: " + repoPath);
-                } catch (Exception e) {
-                    System.err.println("Warning - failed to delete folder: " + repoPath);
-                }
-            }
+    // Snapshot of a job's current state - used as a fallback if SSE isn't
+    // available, and to fetch the final findings once a scan completes.
+    @GetMapping("/scan/{jobId}")
+    public ResponseEntity<?> getScan(@PathVariable String jobId) {
+        ScanJob job = scanProgressService.getJob(jobId);
+        if (job == null) {
+            return ResponseEntity.notFound().build();
         }
+
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("jobId", job.getId());
+        body.put("status", job.getStatus().name());
+        body.put("currentStep", job.getCurrentStep());
+        if (job.getFindings() != null) {
+            body.put("findings", job.getFindings());
+            body.put("findingsCount", job.getFindingsCount());
+        }
+        if (job.getErrorMessage() != null) {
+            body.put("error", job.getErrorMessage());
+        }
+        return ResponseEntity.ok(body);
     }
 
     @GetMapping("/export/{id}")
@@ -94,7 +84,7 @@ public class ScanController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // --- NEW ENDPOINTS FOR REACT DASHBOARD ---
+    // --- ENDPOINTS FOR REACT DASHBOARD ---
 
     @GetMapping("/history")
     public ResponseEntity<?> getScanHistory() {
