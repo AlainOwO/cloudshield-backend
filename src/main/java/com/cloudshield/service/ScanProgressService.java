@@ -58,11 +58,23 @@ public class ScanProgressService {
     }
 
     public void updateStep(String jobId, ScanJob.Status status, String stepDescription) {
+        updateStep(jobId, status, stepDescription, null);
+    }
+
+    // toolId is one of "gitleaks"/"semgrep"/"trivy"/"checkov" while a specific
+    // scanner is running, or null for steps that aren't tool-specific
+    // (cloning, generating AI patches, saving). The frontend uses this to
+    // highlight the exact tool in its scan visualization instead of guessing.
+    public void updateStep(String jobId, ScanJob.Status status, String stepDescription, String toolId) {
         ScanJob job = jobs.get(jobId);
         if (job == null) return;
         job.setStatus(status);
         job.setCurrentStep(stepDescription);
-        broadcast(jobId, "progress", Map.of("status", status.name(), "step", stepDescription));
+        Map<String, Object> data = new java.util.HashMap<>();
+        data.put("status", status.name());
+        data.put("step", stepDescription);
+        data.put("tool", toolId == null ? "" : toolId);
+        broadcast(jobId, "progress", data);
     }
 
     public void complete(String jobId, List<SecretFinding> findings) {

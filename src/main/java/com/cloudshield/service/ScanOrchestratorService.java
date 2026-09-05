@@ -42,16 +42,16 @@ public class ScanOrchestratorService {
 
             List<SecretFinding> findings = new ArrayList<>();
 
-            progressService.updateStep(jobId, ScanJob.Status.SCANNING, "Scanning for hardcoded secrets");
+            progressService.updateStep(jobId, ScanJob.Status.SCANNING, "Scanning for hardcoded secrets", "gitleaks");
             findings.addAll(secretScannerService.runGitleaks(repoPath));
 
-            progressService.updateStep(jobId, ScanJob.Status.SCANNING, "Running static analysis (SAST)");
+            progressService.updateStep(jobId, ScanJob.Status.SCANNING, "Running static analysis (SAST)", "semgrep");
             findings.addAll(secretScannerService.runSemgrep(repoPath));
 
-            progressService.updateStep(jobId, ScanJob.Status.SCANNING, "Checking dependencies for known CVEs");
+            progressService.updateStep(jobId, ScanJob.Status.SCANNING, "Checking dependencies for known CVEs", "trivy");
             findings.addAll(secretScannerService.runTrivy(repoPath));
 
-            progressService.updateStep(jobId, ScanJob.Status.SCANNING, "Checking infrastructure-as-code configuration");
+            progressService.updateStep(jobId, ScanJob.Status.SCANNING, "Checking infrastructure-as-code configuration", "checkov");
             findings.addAll(secretScannerService.runCheckov(repoPath));
 
             int total = findings.size();

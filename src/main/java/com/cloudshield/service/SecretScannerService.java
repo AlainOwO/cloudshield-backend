@@ -56,6 +56,7 @@ public class SecretScannerService {
                             if (item instanceof Map) {
                                 Map<?, ?> map = (Map<?, ?>) item;
                                 SecretFinding finding = new SecretFinding();
+                                finding.setTool("gitleaks");
                                 finding.setRuleName("Secret: " + map.get("RuleID"));
                                 finding.setFilePath(String.valueOf(map.get("File")));
 
@@ -174,6 +175,7 @@ public class SecretScannerService {
                             if (item instanceof Map) {
                                 Map<?, ?> map = (Map<?, ?>) item;
                                 SecretFinding finding = new SecretFinding();
+                                finding.setTool("semgrep");
                                 finding.setRuleName("SAST: " + map.get("check_id"));
                                 finding.setFilePath(String.valueOf(map.get("path")));
 
@@ -230,6 +232,7 @@ public class SecretScannerService {
                                             if (vulnItem instanceof Map) {
                                                 Map<?, ?> vuln = (Map<?, ?>) vulnItem;
                                                 SecretFinding finding = new SecretFinding();
+                                                finding.setTool("trivy");
                                                 finding.setRuleName("SCA: " + vuln.get("VulnerabilityID"));
                                                 finding.setFilePath(String.valueOf(target));
                                                 finding.setLineNumber(1);
@@ -340,6 +343,7 @@ public class SecretScannerService {
                         String checkId = String.valueOf(check.get("check_id"));
 
                         SecretFinding finding = new SecretFinding();
+                        finding.setTool("checkov");
                         finding.setRuleName("IaC: " + checkId);
                         finding.setFilePath(String.valueOf(check.get("file_path")));
 

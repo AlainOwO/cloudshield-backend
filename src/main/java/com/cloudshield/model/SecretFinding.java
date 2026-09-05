@@ -18,6 +18,11 @@ public class SecretFinding {
 
     private String severity;
 
+    // Which scanner produced this finding: "gitleaks", "semgrep", "trivy", or
+    // "checkov". Set directly by SecretScannerService at scan time - the
+    // frontend reads this instead of guessing from the rule name.
+    private String tool;
+
     @Column(length = 5000) // AI patches can be long, give the DB column room
     private String aiSuggestedPatch;
 
@@ -47,6 +52,7 @@ public class SecretFinding {
     public int getLineNumber() { return lineNumber; }
     public String getMatchSnippet() { return matchSnippet; }
     public String getSeverity() { return severity; }
+    public String getTool() { return tool; }
     public String getAiSuggestedPatch() { return aiSuggestedPatch; }
 
     // --- Setters ---
@@ -56,5 +62,6 @@ public class SecretFinding {
     public void setLineNumber(int lineNumber) { this.lineNumber = lineNumber; }
     public void setMatchSnippet(String matchSnippet) { this.matchSnippet = matchSnippet; }
     public void setSeverity(String severity) { this.severity = severity; }
+    public void setTool(String tool) { this.tool = tool; }
     public void setAiSuggestedPatch(String aiSuggestedPatch) { this.aiSuggestedPatch = aiSuggestedPatch; }
 }
